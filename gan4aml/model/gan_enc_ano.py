@@ -9,6 +9,7 @@ class WGAN(tf.keras.Model):
             generator,
             encoder,
             latent_dim,
+            input_dim,
             discriminator_extra_steps=3,
             gp_weight=10.0,
     ):
@@ -17,25 +18,27 @@ class WGAN(tf.keras.Model):
         self.generator = generator
         self.encoder = encoder
         self.latent_dim = latent_dim
+        self.input_dim = input_dim
         self.d_steps = discriminator_extra_steps
         self.gp_weight = gp_weight
 
-    def compile(self, d_optimizer, g_optimizer, e_optimizer, d_loss_fn, g_loss_fn, e_loss_fn):
-        super(WGAN, self).compile()
-        self.d_optimizer = d_optimizer
-        self.g_optimizer = g_optimizer
-        self.e_optimizer = e_optimizer
-        self.d_loss_fn = d_loss_fn
-        self.g_loss_fn = g_loss_fn
-        self.e_loss_fn = e_loss_fn
+        self.d_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.9)
+        self.g_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.9)
+        self.e_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.9)
+        self.d_loss_fn = _discriminator_loss
+        self.g_loss_fn = _generator_loss
+        self.e_loss_fn = _encoder_loss
 
-    def gradient_penalty(self, batch_size, real_data, fake_data):
+    def compile(self):
+        super(WGAN, self).compile()
+
+    def gradient_penalty(self, real_data, fake_data):
         """ Calculates the gradient penalty.
 
-        This loss is calculated on an interpolated image
+        This loss is calculated on an interpolated sample
         and added to the discriminator loss.
         """
-        # Get the interpolated image
+        # Get the interpolated sample
         diff = fake_data - real_data
         batch_size = (tf.compat.dimension_value(diff.shape.dims[0]) or
                       tf.shape(input=diff)[0])
@@ -45,13 +48,13 @@ class WGAN(tf.keras.Model):
 
         with tf.GradientTape() as gp_tape:
             gp_tape.watch(interpolated)
-            # 1. Get the discriminator output for this interpolated image.
+            # 1. Get the discriminator output for this interpolated sample.
             pred = self.discriminator(interpolated, training=True)
 
-        # 2. Calculate the gradients w.r.t to this interpolated image.
+        # 2. Calculate the gradients w.r.t to this interpolated sample.
         grads = gp_tape.gradient(pred, [interpolated])[0]
         # 3. Calculate the norm of the gradients.
-        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))
+        norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[-2, -1]))
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
@@ -89,10 +92,10 @@ class WGAN(tf.keras.Model):
                 # Get the logits for the real data
                 real_logits = self.discriminator(real_data, training=True)
 
-                # Calculate the discriminator loss using the fake and real image logits
+                # Calculate the discriminator loss using the fake and real sample logits
                 d_cost = self.d_loss_fn(real_sample=real_logits, fake_sample=fake_logits)
                 # Calculate the gradient penalty
-                gp = self.gradient_penalty(batch_size, real_data, fake_data)
+                gp = self.gradient_penalty(real_data, fake_data)
                 # Add the gradient penalty to the original discriminator loss
                 d_loss = d_cost + gp * self.gp_weight
 
@@ -129,11 +132,12 @@ class WGAN(tf.keras.Model):
             # Reconstruct encoded generate fake data
             generator_reconstructed_encoded_fake_data = self.generator(encoded_fake_data, training=True)
             # Encode the latent vector
-            encoded_random_latent_vectors = self.encoder(random_latent_vectors, training=True)
+            encoded_random_latent_vectors = self.encoder(tf.random.normal(shape=(batch_size, self.input_dim)),
+                                                         training=True)
             # Encode the latent vector
             encoded_real_data = self.encoder(real_data, training=True)
             # Reconstruct encoded generate fake data
-            generator_reconstructed_encoded_real_data = self.generator(real_data, training=True)
+            generator_reconstructed_encoded_real_data = self.generator(encoded_real_data, training=True)
             # Calculate encoder loss
             e_loss = self.e_loss_fn(generated_data, generator_reconstructed_encoded_fake_data)
 
@@ -198,7 +202,7 @@ def _encoder_loss(
     # loss = tf.reduce_sum(tf.pow(generated_fake_data - generator_reconstracted_data, 2), axis=[-2, -1])
     # beta_cycle_gen = 10.0
     # loss = loss * beta_cycle_gen
-    loss = tf.reduce_mean(tf.abs(generated_fake_data - generator_reconstracted_data, 2))
+    loss = tf.reduce_mean(tf.math.abs(generated_fake_data - generator_reconstracted_data))
     return loss
 
 
@@ -236,7 +240,7 @@ def _construct_dense_layer(x, units, activation_fn, name, batch_norm=False, batc
     return dense_layer
 
 
-def _construct_model(model_name, input_name, input_dim, output_name, output_dim, input_tensor, n_units, n_layers,
+def _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units, n_layers,
                      middle_layer_activation_fn=None, final_activation_fn=None, double_neurons=False,
                      bottleneck_neurons=False, batch_norm=True, batch_dropout=False, dropout_rate=0.5):
     inputs = tf.keras.Input(shape=(input_dim,), name=input_name)
@@ -251,7 +255,7 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
     if double_neurons and bottleneck_neurons:
         raise ValueError("double_neurons and bottleneck_neurons can't both true")
 
-    fc = _construct_dense_layer(input_tensor, units=n_units, activation_fn=middle_layer_activation_fn, name='fc%i' % 1,
+    fc = _construct_dense_layer(inputs, units=n_units, activation_fn=middle_layer_activation_fn, name='fc%i' % 1,
                                 batch_norm=batch_norm, batch_dropout=batch_dropout, dropout_rate=dropout_rate)
 
     if n_layers > 1:
@@ -260,8 +264,9 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
                 n_units = int(n_units * 2)
             elif bottleneck_neurons:
                 n_units = int(n_units / 2)
-            fc = _construct_dense_layer(fc, units=n_units, name='fc%i' % layer, batch_norm=batch_norm,
-                                        batch_dropout=batch_dropout, dropout_rate=dropout_rate)
+            fc = _construct_dense_layer(fc, units=n_units, activation_fn=middle_layer_activation_fn,
+                                        name='fc%i' % layer, batch_norm=batch_norm, batch_dropout=batch_dropout,
+                                        dropout_rate=dropout_rate)
 
     outputs = tf.keras.layers.Dense(output_dim, name=output_name, activation=final_activation_fn)(fc)
 
@@ -303,26 +308,25 @@ def _compute_anomaly_score(
 
 
 # Create the discriminator (the critic in the original WGAN)
-def get_discriminator_model(model_name, input_name, input_dim, output_name, output_dim, input_tensor, n_units,
+def get_discriminator_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
                             n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
-    return _construct_model(model_name, input_name, input_dim, output_name, output_dim, input_tensor, n_units,
+    return _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
                             n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
 
 
 # Create the generator
-def get_generator_model(model_name, input_name, noise_dim, output_name, output_dim, input_tensor, n_units,
+def get_generator_model(model_name, input_name, noise_dim, output_name, output_dim, n_units,
                         n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                         bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
-    return _construct_model(model_name, input_name, noise_dim, output_name, output_dim, input_tensor, n_units,
+    return _construct_model(model_name, input_name, noise_dim, output_name, output_dim, n_units,
                             n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
 
-
-def get_encoder_model(model_name, input_name, noise_dim, output_name, output_dim, input_tensor, n_units,
+def get_encoder_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
                       n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                       bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
-    return _construct_model(model_name, input_name, noise_dim, output_name, output_dim, input_tensor, n_units,
+    return _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
                             n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
