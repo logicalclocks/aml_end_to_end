@@ -1,36 +1,101 @@
 import tensorflow as tf
 
 
-# Create the WGAN-GP model
-class WGAN(tf.keras.Model):
+# Create the GanAnomalyDetector model
+class GanAnomalyDetector(tf.keras.Model):
     def __init__(
             self,
-            discriminator,
-            generator,
-            encoder,
-            latent_dim,
             input_dim,
-            discriminator_extra_steps=3,
+            latent_dim,
+
+            discriminator_start_n_units,
+            discriminator_n_layers,
+            discriminator_activation_fn,
+            discriminator_double_neurons,
+            discriminator_bottleneck_neurons,
+            discriminator_batch_norm,
+            discriminator_batch_dropout,
+            discriminator_dropout_rate,
+            discriminator_learning_rate,
+            discriminator_extra_steps,  # 3
+
+            generator_start_n_units,
+            generator_n_layers,
+            generator_activation_fn,
+            generator_double_neurons,
+            generator_bottleneck_neurons,
+            generator_batch_norm,
+            generator_batch_dropout,
+            generator_dropout_rate,
+            generator_learning_rate,
+
+            encoder_start_n_units,
+            encoder_n_layers,
+            encoder_activation_fn,
+            encoder_batch_norm,
+            encoder_batch_dropout,
+            encoder_dropout_rate,
+            encoder_learning_rate,
+
             gp_weight=10.0,
     ):
-        super(WGAN, self).__init__()
-        self.discriminator = discriminator
-        self.generator = generator
-        self.encoder = encoder
-        self.latent_dim = latent_dim
+        super(GanAnomalyDetector, self).__init__()
         self.input_dim = input_dim
+        self.latent_dim = latent_dim
         self.d_steps = discriminator_extra_steps
         self.gp_weight = gp_weight
+        self.discriminator_learning_rate = discriminator_learning_rate
+        self.generator_learning_rate = generator_learning_rate
+        self.encoder_learning_rate = encoder_learning_rate
 
-        self.d_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.9)
-        self.g_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.9)
-        self.e_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5, beta_2=0.9)
+
+        self.discriminator = get_discriminator_model(model_name="discriminator", input_name="real_inputs",
+                                                     input_dim=self.input_dim, output_name="discriminator_outputs",
+                                                     output_dim=1, n_units=discriminator_start_n_units,
+                                                     n_layers=discriminator_n_layers, middle_layer_activation_fn=None,
+                                                     final_activation_fn=discriminator_activation_fn,
+                                                     double_neurons=discriminator_double_neurons,
+                                                     bottleneck_neurons=discriminator_bottleneck_neurons,
+                                                     batch_norm=discriminator_batch_norm,
+                                                     batch_dropout=discriminator_batch_dropout,
+                                                     dropout_rate=discriminator_dropout_rate)
+
+        self.generator = get_generator_model(model_name="generator", input_name="fake_inputs",
+                                             noise_dim=self.latent_dim, output_name="generator_outputs",
+                                             output_dim=self.input_dim, n_units=generator_start_n_units,
+                                             n_layers=generator_n_layers, middle_layer_activation_fn=None,
+                                             final_activation_fn=generator_activation_fn,
+                                             double_neurons=generator_double_neurons,
+                                             bottleneck_neurons=generator_bottleneck_neurons,
+                                             batch_norm=generator_batch_norm, batch_dropout=generator_batch_dropout,
+                                             dropout_rate=generator_dropout_rate)
+
+        self.encoder = get_encoder_model(model_name="encoder", input_name="encoder_inputs", input_dim=self.input_dim,
+                                         output_name="encoder_outputs", output_dim=self.latent_dim,
+                                         n_units=encoder_start_n_units, n_layers=encoder_n_layers,
+                                         middle_layer_activation_fn=None, final_activation_fn=encoder_activation_fn,
+                                         double_neurons=False, bottleneck_neurons=True, batch_norm=encoder_batch_norm,
+                                         batch_dropout=encoder_batch_dropout, dropout_rate=encoder_dropout_rate)
+
+    def compile(self):
+        super(GanAnomalyDetector, self).compile()
+        self.d_optimizer = tf.keras.optimizers.Adam(learning_rate=self.discriminator_learning_rate, beta_1=0.5,
+                                                    beta_2=0.9)
+        self.g_optimizer = tf.keras.optimizers.Adam(learning_rate=self.generator_learning_rate, beta_1=0.5, beta_2=0.9)
+        self.e_optimizer = tf.keras.optimizers.Adam(learning_rate=self.encoder_learning_rate, beta_1=0.5, beta_2=0.9)
         self.d_loss_fn = _discriminator_loss
         self.g_loss_fn = _generator_loss
         self.e_loss_fn = _encoder_loss
 
-    def compile(self):
-        super(WGAN, self).compile()
+    def model_summaries(self, model):
+        if model == "discriminator":
+            self.discriminator.summay()
+        elif model == "generator":
+            self.generator.summay()
+        elif model == "encoder":
+            self.encoder.summay()
+        else:
+            raise ValueError("Unknown model name, must be 'discriminator', 'generator' or 'encoder'")
 
     def gradient_penalty(self, real_data, fake_data):
         """ Calculates the gradient penalty.
@@ -134,25 +199,8 @@ class WGAN(tf.keras.Model):
             # Encode the latent vector
             encoded_random_latent_vectors = self.encoder(tf.random.normal(shape=(batch_size, self.input_dim)),
                                                          training=True)
-            # Encode the latent vector
-            encoded_real_data = self.encoder(real_data, training=True)
-            # Reconstruct encoded generate fake data
-            generator_reconstructed_encoded_real_data = self.generator(encoded_real_data, training=True)
             # Calculate encoder loss
             e_loss = self.e_loss_fn(generated_data, generator_reconstructed_encoded_fake_data)
-
-            # Compute anomaly score
-            anomaly_score, gen_rec_loss, real_to_orig_dist, gen_rec_loss_predict, real_to_orig_dist_predict = \
-                _compute_anomaly_score(
-                    generator_reconstructed_encoded_fake_data,
-                    encoded_random_latent_vectors,
-                    real_data,
-                    encoded_real_data,
-                    generator_reconstructed_encoded_real_data,
-                    alpha=0.7,
-                    scope="anomaly_score",
-                    add_summaries=False
-                )
 
         # Get the gradients w.r.t the generator loss
         enc_gradient = tape.gradient(e_loss, self.encoder.trainable_variables)
@@ -165,20 +213,38 @@ class WGAN(tf.keras.Model):
 
 
 # Create a Keras callback that periodically saves generated data
-class GANMonitor(tf.keras.callbacks.Callback):
-    def __init__(self, num_sample=6, latent_dim=128):
-        self.num_sample = num_sample
+class GanAnomalyMonitor(tf.keras.callbacks.Callback):
+    def __init__(self, batch_size, latent_dim, input_dim, alpha, real_data):
+        self.batch_size = batch_size
         self.latent_dim = latent_dim
+        self.input_dim = input_dim
+        self.real_data = real_data
+        self.alpha = alpha
 
     def on_epoch_end(self, epoch, logs=None):
         random_latent_vectors = tf.random.normal(shape=(self.num_sample, self.latent_dim))
-        generated_data = self.model.generator(random_latent_vectors)
-        generated_data = (generated_data * 127.5) + 127.5
+        generated_data = self.model.generator(random_latent_vectors, training=False)
+        # Compress generate fake data from the latent vector
+        encoded_fake_data = self.model.encoder(generated_data, training=False)
+        # Reconstruct encoded generate fake data
+        generator_reconstructed_encoded_fake_data = self.model.generator(encoded_fake_data, training=False)
+        # Encode the latent vector
+        encoded_random_latent_vectors = self.encoder(tf.random.normal(shape=(self.batch_size, self.input_dim)),
+                                                     training=False)
+        # Encode the latent vector
+        encoded_real_data = self.model.encoder(self.real_data, training=False)
+        # Reconstruct encoded generate fake data
+        generator_reconstructed_encoded_real_data = self.model.generator(encoded_real_data, training=False)
 
-        for i in range(self.num_sample):
-            sample = generated_data[i].numpy()
-            sample = tf.keras.preprocessing.image.array_to_sample(sample)
-            sample.save("generated_sample_{i}_{epoch}.png".format(i=i, epoch=epoch))
+        _compute_anomaly_score(
+            generator_reconstructed_encoded_fake_data,
+            encoded_random_latent_vectors,
+            self.real_data,
+            encoded_real_data,
+            generator_reconstructed_encoded_real_data,
+            self.alpha,
+            scope="anomaly_score",
+            add_summaries=True)
 
 
 # Define the loss functions for the discriminator,
@@ -323,6 +389,7 @@ def get_generator_model(model_name, input_name, noise_dim, output_name, output_d
     return _construct_model(model_name, input_name, noise_dim, output_name, output_dim, n_units,
                             n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
+
 
 def get_encoder_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
                       n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
