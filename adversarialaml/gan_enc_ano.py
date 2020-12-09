@@ -229,7 +229,7 @@ class GanAnomalyMonitor(tf.keras.callbacks.Callback):
         self.alpha = alpha
 
     def on_epoch_end(self, epoch, logs=None):
-        random_latent_vectors = tf.random.normal(shape=(self.num_sample, self.latent_dim))
+        random_latent_vectors = tf.random.normal(shape=(self.batch_size, self.latent_dim))
         generated_data = self.model.generator(random_latent_vectors, training=False)
         # Compress generate fake data from the latent vector
         encoded_fake_data = self.model.encoder(generated_data, training=False)
