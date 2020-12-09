@@ -17,7 +17,7 @@ class GanAnomalyDetector(tf.keras.Model):
             discriminator_batch_dropout,
             discriminator_dropout_rate,
             discriminator_learning_rate,
-            discriminator_extra_steps,  # 3
+            discriminator_extra_steps,
 
             generator_start_n_units,
             generator_n_layers,
@@ -133,6 +133,13 @@ class GanAnomalyDetector(tf.keras.Model):
         # For each batch, we are going to perform the
         # following steps as laid out in the original paper:
         # 1. Train the generator and get the generator loss
+
+        # 1a. Train the encoder and get the encoder loss by:
+        #  a) encode generated data
+        #  b) then reconstruct this by generator
+        #  c) encoder loss will the distance between generator reconstructed data and generated data
+        #  For more details about this please refer to https://arxiv.org/pdf/1905.11034.pdf
+
         # 2. Train the discriminator and get the discriminator loss
         # 3. Calculate the gradient penalty
         # 4. Multiply this gradient penalty with a constant weight factor
