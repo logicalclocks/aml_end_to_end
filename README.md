@@ -4,19 +4,14 @@ AML End to End Example
 
 ## Notebooks description
 
-#### SPR_ingestion.ipynb
-Create 2 features groups from the Santanted Product Recommendation competition https://www.kaggle.com/c/santander-product-recommendation/data .
-The feature groups are one for train and the other for test.
 
-#### AMLSim_injestion.ipynb
-Create 2 features groups from the AMLSim project https://github.com/IBM/AMLSim .
-The feature groups represents the generated accounts and transactions.
-
-#### feature_engineering.ipynb
-Create 2 feature groups from the feature groups created in AMLSim_injestion.ipynb.
+#### transaction_feature_engineering_ingestion.ipynb
+Create 1 features group from the AMLSim project https://github.com/IBM/AMLSim .
+The feature group represents the generated transactions. 
 The features are transformed in numerical.
-Finally, the notebook creates 2 training datasets frin the feature groups.
 
+#### training_dataset_for_embeddings.ipynb
+Create 2 training datasets for accounts and transactions.
 
 ## Data description
 
