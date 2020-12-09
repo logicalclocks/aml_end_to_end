@@ -1,6 +1,9 @@
 # AMLend2end
 AML End to End Example
 
+TODO: Project description
+
+TODO: Project scope and goals
 
 ## Notebooks description
 
@@ -12,6 +15,10 @@ The features are transformed in numerical.
 
 #### training_dataset_for_embeddings.ipynb
 Create 2 training datasets for accounts and transactions.
+
+TODO: other files
+
+## TODO: model description
 
 ## Data description
 
