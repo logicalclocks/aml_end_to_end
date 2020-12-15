@@ -214,17 +214,18 @@ class GanAnomalyDetector(tf.keras.Model):
     # define custom server function
     @tf.function
     def serve_function(self, input):
-        # Encode the latent vector
+        """anomaly score.
+          See https://arxiv.org/pdf/1905.11034.pdf for more details
+        """
+        # Encode the real data
         encoded_real_data = self.encoder(input, training=False)
-        # Reconstruct encoded generate fake data
+        # Reconstruct encoded real data
         generator_reconstructed_encoded_real_data = self.generator(encoded_real_data, training=False)
-
+        # Calculate distance between real and reconstructed data
         gen_rec_loss_predict = tf.math.reduce_sum(
             tf.math.pow(input - generator_reconstructed_encoded_real_data, 2), axis=[-1])
-
-        real_to_orig_dist_predict = tf.math.reduce_sum(
-            tf.math.pow(encoded_real_data, 2), axis=[-1])
-
+        # Compute anomaly score
+        real_to_orig_dist_predict = tf.math.reduce_sum(tf.math.pow(encoded_real_data, 2), axis=[-1])
         anomaly_score = (gen_rec_loss_predict * self.anomaly_alpha) + ((1 - self.anomaly_alpha) *
                                                                        real_to_orig_dist_predict)
 
@@ -357,7 +358,6 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
     return tf.keras.Model(inputs=inputs, outputs=outputs, name=model_name)
 
 
-@tf.function
 def _compute_anomaly_score(
         generator_reconstructed_encoded_fake_data,
         encoded_random_latent_vectors,
