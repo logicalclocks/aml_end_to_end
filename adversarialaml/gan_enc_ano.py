@@ -47,7 +47,7 @@ class GanAnomalyDetector(tf.keras.Model):
         self.discriminator_learning_rate = discriminator_learning_rate
         self.generator_learning_rate = generator_learning_rate
         self.encoder_learning_rate = encoder_learning_rate
-
+        self.anomaly_alpha = 0.7
 
         self.discriminator = get_discriminator_model(model_name="discriminator", input_name="real_inputs",
                                                      input_dim=self.input_dim, output_name="discriminator_outputs",
@@ -211,6 +211,25 @@ class GanAnomalyDetector(tf.keras.Model):
 
         return {"d_loss": d_loss, "g_loss": g_loss, "e_loss": e_loss}
 
+    # define custom server function
+    @tf.function
+    def serve_function(self, input):
+        """anomaly score.
+          See https://arxiv.org/pdf/1905.11034.pdf for more details
+        """
+        # Encode the real data
+        encoded_real_data = self.encoder(input, training=False)
+        # Reconstruct encoded real data
+        generator_reconstructed_encoded_real_data = self.generator(encoded_real_data, training=False)
+        # Calculate distance between real and reconstructed data
+        gen_rec_loss_predict = tf.math.reduce_sum(
+            tf.math.pow(input - generator_reconstructed_encoded_real_data, 2), axis=[-1])
+        # Compute anomaly score
+        real_to_orig_dist_predict = tf.math.reduce_sum(tf.math.pow(encoded_real_data, 2), axis=[-1])
+        anomaly_score = (gen_rec_loss_predict * self.anomaly_alpha) + ((1 - self.anomaly_alpha) *
+                                                                       real_to_orig_dist_predict)
+
+        return {'anomaly_score': anomaly_score}
 
 # Create a Keras callback that periodically saves generated data
 class GanAnomalyMonitor(tf.keras.callbacks.Callback):
@@ -242,7 +261,7 @@ class GanAnomalyMonitor(tf.keras.callbacks.Callback):
             self.real_data,
             encoded_real_data,
             generator_reconstructed_encoded_real_data,
-            self.alpha,
+            self.anomaly_alpha,
             scope="anomaly_score",
             add_summaries=True)
 
