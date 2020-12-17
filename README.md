@@ -9,8 +9,7 @@ Generative Adversarial Networks (GANs) and Graph embeddings. Proposed solution i
 downstream analysis, such as creating training datasets for model training, as well as retrieving them      
 * Graph Embeddings - We will use [StellarGraph](https://github.com/stellargraph/stellargraph) library to compute graph 
 embeddings.
-* Anomaly detection model - We will use keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) 
-* that was adapted to tabular data.
+* Anomaly detection model - We will use keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) that was adapted to tabular data.
 * Hyper parameter tuning - We will use [Maggy](https://github.com/logicalclocks/maggy) to conduct experiments for 
 hyperparameter tuning.  
 * Model serving - We will use Hopsworks model server to predict anomalous transactions. 
