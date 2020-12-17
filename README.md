@@ -26,9 +26,6 @@ Hopsworks job.
  
 ## End to End pipeline
 To successfully complete this tutorial use one of 2 options bellow
-
-### Airflow 
-create Airflow DAG using provided airflow_aml_end2end.py
  
 ### Jupyter notebooks step by step   
 Run jupyter notebooks in the following order:
@@ -40,3 +37,9 @@ Run jupyter notebooks in the following order:
 6) training/maggy_adversarial_aml.ipynb
 7) training/train_adversarial_aml.ipynb
 8) mlserver/aml_model_server.ipynb
+
+### Airflow
+In Hopsworks you can also create airflow pipeline. For this:  
+1) Create notebook jobs. You can follow instrictions [here](https://hopsworks.readthedocs.io/en/stable/user_guide/hopsworks/jobs.html?highlight=project.connect#python). 
+how to create jobs in Hopsworks.
+2) Create Airflow DAG using provided airflow_aml_end2end.py. 
