@@ -42,7 +42,7 @@ args = {
 # Our DAG
 dag = DAG(
     # Arbitrary identifier/name
-    dag_id = "AMLend2end",
+    dag_id = "airflow_aml_end2end",
     default_args = args,
 
     # Run the DAG only one time
@@ -116,4 +116,13 @@ launch_aml_model_server = HopsworksLaunchOperator(dag=dag,
 					 job_arguments="",
 					 wait_for_completion=True)
 					 
+
+
+launch_prep_training_dataset_for_embeddings.set_upstream(launch_transaction_feature_engineering_ingestion)
+launch_maggy_node_embeddings.set_upstream(launch_prep_training_dataset_for_embeddings)
+launch_compute_node_embeddings.set_upstream(launch_maggy_node_embeddings)
+launch_predict_node_embeddings_and_ingest_to_fs.set_upstream(launch_compute_node_embeddings)
+launch_maggy_adversarial_aml.set_upstream(launch_predict_node_embeddings_and_ingest_to_fs)
+launch_train_adversarial_aml.set_upstream(launch_maggy_adversarial_aml)
+launch_aml_model_server.set_upstream(launch_train_adversarial_aml)
 
