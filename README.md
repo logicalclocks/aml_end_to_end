@@ -39,6 +39,6 @@ Run jupyter notebooks in the following order:
 
 ### Airflow
 In Hopsworks you can also create airflow pipeline. For this:  
-1) Create notebook jobs. You can follow instrictions [here](https://hopsworks.readthedocs.io/en/stable/user_guide/hopsworks/jobs.html?highlight=project.connect#python). 
+1) Create notebook jobs. You can follow instrictions [here](https://hopsworks.readthedocs.io/en/stable/user_guide/hopsworks/jobs.html?highlight=project.connect#python) 
 how to create jobs in Hopsworks.
 2) Create Airflow DAG using provided airflow_aml_end2end.py. 
