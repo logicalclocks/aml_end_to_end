@@ -11,11 +11,27 @@ downstream analysis, such as creating training datasets for model training, as w
 embeddings.
 * Anomaly detection model - We will use keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) 
 * that was adapted to tabular data.
-* Hyper parameter tuning - We will use [Maggy](https://github.com/logicalclocks/maggy) to conduct experiments for hyperparameter tuning.  
+* Hyper parameter tuning - We will use [Maggy](https://github.com/logicalclocks/maggy) to conduct experiments for 
+hyperparameter tuning.  
 * Model serving - We will use Hopsworks model server to predict anomalous transactions. 
- 
-## To successfully complete this tutorial follow the following steps 
 
+## Demo dataset
+Sample of transactions data is provided in the folder ./demodata. Upload transactions.csv and accounts.csv in to the 
+hdfs:///Projects/{}/Resources in your Hopsworks cluser 
+
+## Anomaly detection model
+Keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) is provided in the folder
+./adversarialaml. To use this library zip adversarialaml folder and attach dversarialaml.zip to Jupyter server or 
+Hopsworks job.  
+ 
+## End to End pipeline
+To successfully complete this tutorial use one of 2 options bellow
+
+### Airflow 
+create Airflow DAG using provided airflow_aml_end2end.py
+ 
+### Jupyter notebooks step by step   
+Run jupyter notebooks in the following order:
 1) data_ingestion/transaction_feature_engineering_ingestion.ipynb 
 2) data_ingestion/prep_training_dataset_for_embeddings.ipynb
 3) training/maggy_node_embeddings.ipynb
