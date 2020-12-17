@@ -12,7 +12,7 @@ embeddings.
 * Anomaly detection model - We will use keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) 
 * that was adapted to tabular data.
 * Hyper parameter tuning - We will use [Maggy](https://github.com/logicalclocks/maggy) to conduct experiments for hyperparameter tuning.  
-* Model serving - We will use Hopsworks model server to predict anomalous transaction. 
+* Model serving - We will use Hopsworks model server to predict anomalous transactions. 
  
 ## To successfully complete this tutorial follow the following steps 
 
