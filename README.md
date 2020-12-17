@@ -17,7 +17,7 @@ hyperparameter tuning.
 
 ## Demo dataset
 Sample of transactions data is provided in the folder ./demodata. Upload transactions.csv and accounts.csv in to the 
-hdfs:///Projects/{}/Resources in your Hopsworks cluser 
+hdfs:///Projects/{}/Resources in your Hopsworks cluster. 
 
 ## Anomaly detection model
 Keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) is provided in the folder
