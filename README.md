@@ -28,14 +28,14 @@ To successfully complete this tutorial use one of 2 options bellow
  
 ### Jupyter notebooks step by step   
 Run jupyter notebooks in the following order:
-1) data_ingestion/transaction_feature_engineering_ingestion.ipynb 
-2) data_ingestion/prep_training_dataset_for_embeddings.ipynb
-3) training/maggy_node_embeddings.ipynb
-4) training/compute_node_embeddings.ipynb 
-5) mlserver/predict_node_embeddings_and_ingest_to_fs.ipynb
-6) training/maggy_adversarial_aml.ipynb
-7) training/train_adversarial_aml.ipynb
-8) mlserver/aml_model_server.ipynb
+1) data_ingestion/1_transaction_feature_engineering_ingestion.ipynb 
+2) data_ingestion/2_prep_training_dataset_for_embeddings.ipynb
+3) training/3_maggy_node_embeddings.ipynb
+4) training/4_compute_node_embeddings.ipynb 
+5) mlserver/5_predict_node_embeddings_and_ingest_to_fs.ipynb
+6) training/6_maggy_adversarial_aml.ipynb
+7) training/7_train_adversarial_aml.ipynb
+8) mlserver/8_aml_model_server.ipynb
 
 ### Airflow
 In Hopsworks you can also create airflow pipeline. For this:  
