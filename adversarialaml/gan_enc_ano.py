@@ -17,9 +17,11 @@
 
 import tensorflow as tf
 
+
 # Create the GanAnomalyDetector model
 class GanAnomalyDetector(tf.keras.Model):
     # implementation is based on https://github.com/keras-team/keras-io/blob/master/examples/generative/wgan_gp.py
+    #   https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch/
     def __init__(
             self,
             input_dim,
@@ -140,6 +142,7 @@ class GanAnomalyDetector(tf.keras.Model):
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
+    @tf.function
     def train_step(self, real_data):
         if isinstance(real_data, tuple):
             real_data = real_data[0]
@@ -219,6 +222,7 @@ class GanAnomalyDetector(tf.keras.Model):
                                                          training=True)
             # Calculate encoder loss
             e_loss = self.e_loss_fn(generated_data, generator_reconstructed_encoded_fake_data)
+            # e_loss = self.e_loss_fn(generated_data, encoded_fake_data, generator_reconstructed_encoded_fake_data)
 
         # Get the gradients w.r.t the generator loss
         enc_gradient = tape.gradient(e_loss, self.encoder.trainable_variables)
@@ -227,11 +231,22 @@ class GanAnomalyDetector(tf.keras.Model):
             zip(enc_gradient, self.encoder.trainable_variables)
         )
 
-        return {"d_loss": d_loss, "g_loss": g_loss, "e_loss": e_loss}
+        anomaly_score = self.compute_anomaly_score(real_data)
+
+        return {"d_loss": d_loss, "g_loss": g_loss, "e_loss": e_loss, "anomaly_score": anomaly_score["anomaly_score"]}
+
+    @tf.function
+    def test_step(self, input):
+        if isinstance(input, tuple):
+            input = input[0]
+        return self.compute_anomaly_score(input)
 
     # define custom server function
     @tf.function
     def serve_function(self, input):
+        return self.compute_anomaly_score(input)
+
+    def compute_anomaly_score(self, input):
         """anomaly score.
           See https://arxiv.org/pdf/1905.11034.pdf for more details
         """
@@ -240,49 +255,39 @@ class GanAnomalyDetector(tf.keras.Model):
         # Reconstruct encoded real data
         generator_reconstructed_encoded_real_data = self.generator(encoded_real_data, training=False)
         # Calculate distance between real and reconstructed data
-        gen_rec_loss_predict = tf.math.reduce_sum(
-            tf.math.pow(input - generator_reconstructed_encoded_real_data, 2), axis=[-1])
-        # Compute anomaly score
-        real_to_orig_dist_predict = tf.math.reduce_sum(tf.math.pow(encoded_real_data, 2), axis=[-1])
-        anomaly_score = (gen_rec_loss_predict * self.anomaly_alpha) + ((1 - self.anomaly_alpha) *
-                                                                       real_to_orig_dist_predict)
+        gen_rec_loss_predict = tf.math.reduce_sum(tf.math.pow(input - generator_reconstructed_encoded_real_data, 2),
+                                                  axis=[-1])
 
+        # # Compute anomaly score
+        # real_to_orig_dist_predict = tf.math.reduce_sum(tf.math.pow(encoded_random_latent - encoded_real_data, 2), axis=[-1])
+        # anomaly_score = (gen_rec_loss_predict * self.anomaly_alpha) + ((1 - self.anomaly_alpha) * real_to_orig_dist_predict)
+        anomaly_score = gen_rec_loss_predict
         return {'anomaly_score': anomaly_score}
+
 
 # Create a Keras callback that periodically saves generated data
 class GanAnomalyMonitor(tf.keras.callbacks.Callback):
-    def __init__(self, batch_size, latent_dim, input_dim, alpha, real_data):
+    def __init__(self, batch_size, latent_dim, input_dim):
         self.batch_size = batch_size
         self.latent_dim = latent_dim
         self.input_dim = input_dim
-        self.real_data = real_data
-        self.alpha = alpha
 
     def on_epoch_end(self, epoch, logs=None):
-        random_latent_vectors = tf.random.normal(shape=(self.num_sample, self.latent_dim))
+        random_latent_vectors = tf.random.normal(shape=(self.batch_size, self.latent_dim))
         generated_data = self.model.generator(random_latent_vectors, training=False)
         # Compress generate fake data from the latent vector
         encoded_fake_data = self.model.encoder(generated_data, training=False)
         # Reconstruct encoded generate fake data
         generator_reconstructed_encoded_fake_data = self.model.generator(encoded_fake_data, training=False)
         # Encode the latent vector
-        encoded_random_latent_vectors = self.encoder(tf.random.normal(shape=(self.batch_size, self.input_dim)),
+        encoded_random_latent_vectors = self.model.encoder(tf.random.normal(shape=(self.batch_size, self.input_dim)),
                                                      training=False)
-        # Encode the latent vector
-        encoded_real_data = self.model.encoder(self.real_data, training=False)
-        # Reconstruct encoded generate fake data
-        generator_reconstructed_encoded_real_data = self.model.generator(encoded_real_data, training=False)
 
-        _compute_anomaly_score(
-            generator_reconstructed_encoded_fake_data,
-            encoded_random_latent_vectors,
-            self.real_data,
-            encoded_real_data,
-            generator_reconstructed_encoded_real_data,
-            self.anomaly_alpha,
-            scope="anomaly_score",
-            add_summaries=True)
-
+        tf.summary.histogram(name="random_latent_vectors", data=random_latent_vectors, step=epoch, description=None)
+        tf.summary.histogram(name="generated_data", data=generated_data, step=epoch, description=None)
+        tf.summary.histogram(name="encoded_fake_data", data=encoded_fake_data, step=epoch, description=None)
+        tf.summary.histogram(name="encoded_random_latent_vectors", data=encoded_random_latent_vectors, step=epoch, description=None)
+        tf.summary.histogram(name="generator_reconstructed_encoded_fake_data", data=generator_reconstructed_encoded_fake_data, step=epoch, description=None)
 
 # Define the loss functions for the discriminator,
 # which should be (fake_loss - real_loss).
@@ -305,8 +310,23 @@ def _encoder_loss(
     # loss = tf.reduce_sum(tf.pow(generated_fake_data - generator_reconstracted_data, 2), axis=[-2, -1])
     # beta_cycle_gen = 10.0
     # loss = loss * beta_cycle_gen
-    loss = tf.reduce_mean(tf.math.abs(generated_fake_data - generator_reconstracted_data))
+
+    # loss = tf.reduce_mean(tf.math.abs(generated_fake_data - generator_reconstracted_data))
+    loss = tf.math.reduce_sum(tf.math.pow(generated_fake_data - generator_reconstracted_data, 2), axis=[-1])
     return loss
+
+
+"""
+def _encoder_loss(generated_fake_data, encoded_fake_data, generator_reconstructed_encoded_fake_data):
+    # Calculate distance between real and reconstructed data
+    gen_rec_loss_predict = tf.math.reduce_sum(
+        tf.math.pow(generated_fake_data - generator_reconstructed_encoded_fake_data, 2), axis=[-1])
+    # Compute anomaly score
+    fake_to_orig_dist_predict = tf.math.reduce_sum(tf.math.pow(encoded_fake_data, 2), axis=[-1])
+    anomaly_score = (gen_rec_loss_predict * 0.7) + ((1 - 0.7) * fake_to_orig_dist_predict)
+
+    return anomaly_score
+"""
 
 
 def _construct_dense_layer(x, units, activation_fn, name, batch_norm=False, batch_dropout=False, dropout_rate=0.0):
@@ -376,13 +396,13 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
     return tf.keras.Model(inputs=inputs, outputs=outputs, name=model_name)
 
 
-def _compute_anomaly_score(
+def _bluh(
         generator_reconstructed_encoded_fake_data,
         encoded_random_latent_vectors,
         real_data,
         encoded_real_data,
         generator_reconstructed_encoded_real_data,
-        alpha,
+        alpha=0.7,
         scope="anomaly_score",
         add_summaries=False):
     """anomaly score.
@@ -394,20 +414,23 @@ def _compute_anomaly_score(
             tf.math.pow(real_data - generator_reconstructed_encoded_fake_data, 2), axis=[-2, -1])
         gen_rec_loss_predict = tf.math.reduce_sum(
             tf.math.pow(real_data - generator_reconstructed_encoded_real_data, 2), axis=[-1])
-
         real_to_orig_dist = tf.math.reduce_sum(
             tf.math.pow(encoded_real_data - encoded_random_latent_vectors, 2), axis=[-2, -1])
-        real_to_orig_dist_predict = tf.math.reduce_sum(
-            tf.math.pow(encoded_real_data, 2), axis=[-1])
+        # real_to_orig_dist_predict = tf.math.reduce_sum(
+        #    tf.math.pow(encoded_real_data, 2), axis=[-1])
 
-        anomaly_score = (gen_rec_loss_predict * alpha) + ((1 - alpha) * real_to_orig_dist_predict)
+        anomaly_score = (gen_rec_loss_predict * alpha) + ((1 - alpha) * real_to_orig_dist)
 
         if add_summaries:
             tf.summary.scalar(name=scope + "_gen_rec_loss", data=gen_rec_loss, step=None, description=None)
             tf.summary.scalar(name=scope + "_orig_loss", data=real_to_orig_dist, step=None, description=None)
             tf.summary.scalar(name=scope, data=anomaly_score, step=None, description=None)
 
-    return anomaly_score, gen_rec_loss, real_to_orig_dist, gen_rec_loss_predict, real_to_orig_dist_predict
+    return anomaly_score, gen_rec_loss, real_to_orig_dist, gen_rec_loss_predict,  # real_to_orig_dist_predict
+
+
+def _dataset_split(ds, target):
+    return ds.filter(lambda *x: x[1] == target)
 
 
 # Create the discriminator (the critic in the original WGAN)
