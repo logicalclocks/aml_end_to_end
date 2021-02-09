@@ -30,17 +30,19 @@ class GanAnomalyDetector(tf.keras.Model):
             discriminator_start_n_units,
             discriminator_n_layers,
             discriminator_activation_fn,
+            discriminator_middle_layer_activation_fn,
             discriminator_double_neurons,
             discriminator_bottleneck_neurons,
             discriminator_batch_norm,
             discriminator_batch_dropout,
             discriminator_dropout_rate,
             discriminator_learning_rate,
-            discriminator_extra_steps,  # 3
+            discriminator_extra_steps,
 
             generator_start_n_units,
             generator_n_layers,
             generator_activation_fn,
+            generator_middle_layer_activation_fn,
             generator_double_neurons,
             generator_bottleneck_neurons,
             generator_batch_norm,
@@ -51,6 +53,7 @@ class GanAnomalyDetector(tf.keras.Model):
             encoder_start_n_units,
             encoder_n_layers,
             encoder_activation_fn,
+            encoder_middle_layer_activation_fn,
             encoder_batch_norm,
             encoder_batch_dropout,
             encoder_dropout_rate,
@@ -71,8 +74,9 @@ class GanAnomalyDetector(tf.keras.Model):
         self.discriminator = get_discriminator_model(model_name="discriminator", input_name="real_inputs",
                                                      input_dim=self.input_dim, output_name="discriminator_outputs",
                                                      output_dim=1, n_units=discriminator_start_n_units,
-                                                     n_layers=discriminator_n_layers, middle_layer_activation_fn=None,
-                                                     final_activation_fn=discriminator_activation_fn,
+                                                     n_layers=discriminator_n_layers,
+                                                     middle_layer_activation_fn=discriminator_middle_layer_activation_fn,
+                                                     final_activation_fn_name=discriminator_activation_fn,
                                                      double_neurons=discriminator_double_neurons,
                                                      bottleneck_neurons=discriminator_bottleneck_neurons,
                                                      batch_norm=discriminator_batch_norm,
@@ -82,8 +86,9 @@ class GanAnomalyDetector(tf.keras.Model):
         self.generator = get_generator_model(model_name="generator", input_name="fake_inputs",
                                              noise_dim=self.latent_dim, output_name="generator_outputs",
                                              output_dim=self.input_dim, n_units=generator_start_n_units,
-                                             n_layers=generator_n_layers, middle_layer_activation_fn=None,
-                                             final_activation_fn=generator_activation_fn,
+                                             n_layers=generator_n_layers,
+                                             middle_layer_activation_fn=generator_middle_layer_activation_fn,
+                                             final_activation_fn_name=generator_activation_fn,
                                              double_neurons=generator_double_neurons,
                                              bottleneck_neurons=generator_bottleneck_neurons,
                                              batch_norm=generator_batch_norm, batch_dropout=generator_batch_dropout,
@@ -92,7 +97,8 @@ class GanAnomalyDetector(tf.keras.Model):
         self.encoder = get_encoder_model(model_name="encoder", input_name="encoder_inputs", input_dim=self.input_dim,
                                          output_name="encoder_outputs", output_dim=self.latent_dim,
                                          n_units=encoder_start_n_units, n_layers=encoder_n_layers,
-                                         middle_layer_activation_fn=None, final_activation_fn=encoder_activation_fn,
+                                         middle_layer_activation_fn=encoder_middle_layer_activation_fn,
+                                         final_activation_fn_name=encoder_activation_fn,
                                          double_neurons=False, bottleneck_neurons=True, batch_norm=encoder_batch_norm,
                                          batch_dropout=encoder_batch_dropout, dropout_rate=encoder_dropout_rate)
 
@@ -328,18 +334,26 @@ def _encoder_loss(generated_fake_data, encoded_fake_data, generator_reconstructe
     return anomaly_score
 """
 
-
-def _construct_dense_layer(x, units, activation_fn, name, batch_norm=False, batch_dropout=False, dropout_rate=0.0):
-    if activation_fn == 'relu':
+def _str_to_act_fn(activation_name):
+    if activation_name == 'relu':
         activation_fn = tf.keras.layers.Activation(tf.nn.relu)
-    elif activation_fn == 'leaky_relu':
+    elif activation_name == 'leaky_relu':
         activation_fn = tf.keras.layers.Activation(tf.nn.leaky_relu)
-    elif activation_fn == 'tanh':
+    elif activation_name == 'tanh':
         activation_fn = tf.keras.layers.Activation(tf.nn.tanh)
-    elif activation_fn == 'selu':
+    elif activation_name == 'selu':
         activation_fn = tf.keras.layers.Activation(tf.nn.selu)
-    elif activation_fn == 'linear':
+    elif activation_name == 'linear':
         activation_fn = None
+    elif activation_name is None:
+        activation_fn = None
+    else:
+        raise ("Unknown activation fn " + "`" + activation_name + "`")
+    return activation_fn
+
+def _construct_dense_layer(x, units, activation_name, name, batch_norm=False, batch_dropout=False, dropout_rate=0.0):
+
+    activation_fn = _str_to_act_fn(activation_name)
 
     # Add regularizers when creating variables or layers:
     dense_layer = tf.keras.layers.Dense(
@@ -364,7 +378,7 @@ def _construct_dense_layer(x, units, activation_fn, name, batch_norm=False, batc
 
 
 def _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units, n_layers,
-                     middle_layer_activation_fn=None, final_activation_fn=None, double_neurons=False,
+                     middle_layer_activation_fn=None, final_activation_fn_name=None, double_neurons=False,
                      bottleneck_neurons=False, batch_norm=True, batch_dropout=False, dropout_rate=0.5):
     inputs = tf.keras.Input(shape=(input_dim,), name=input_name)
 
@@ -378,7 +392,7 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
     if double_neurons and bottleneck_neurons:
         raise ValueError("double_neurons and bottleneck_neurons can't both true")
 
-    fc = _construct_dense_layer(inputs, units=n_units, activation_fn=middle_layer_activation_fn, name='fc%i' % 1,
+    fc = _construct_dense_layer(inputs, units=n_units, activation_name=middle_layer_activation_fn, name='fc%i' % 1,
                                 batch_norm=batch_norm, batch_dropout=batch_dropout, dropout_rate=dropout_rate)
 
     if n_layers > 1:
@@ -387,10 +401,11 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
                 n_units = int(n_units * 2)
             elif bottleneck_neurons:
                 n_units = int(n_units / 2)
-            fc = _construct_dense_layer(fc, units=n_units, activation_fn=middle_layer_activation_fn,
+            fc = _construct_dense_layer(fc, units=n_units, activation_name=middle_layer_activation_fn,
                                         name='fc%i' % layer, batch_norm=batch_norm, batch_dropout=batch_dropout,
                                         dropout_rate=dropout_rate)
 
+    final_activation_fn = _str_to_act_fn(final_activation_fn_name)
     outputs = tf.keras.layers.Dense(output_dim, name=output_name, activation=final_activation_fn)(fc)
 
     return tf.keras.Model(inputs=inputs, outputs=outputs, name=model_name)
@@ -435,25 +450,25 @@ def _dataset_split(ds, target):
 
 # Create the discriminator (the critic in the original WGAN)
 def get_discriminator_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
-                            n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
+                            n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
     return _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
-                            n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
+                            n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
 
 
 # Create the generator
 def get_generator_model(model_name, input_name, noise_dim, output_name, output_dim, n_units,
-                        n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
+                        n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                         bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
     return _construct_model(model_name, input_name, noise_dim, output_name, output_dim, n_units,
-                            n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
+                            n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
 
 
 def get_encoder_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
-                      n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
+                      n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                       bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
     return _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
-                            n_layers, middle_layer_activation_fn, final_activation_fn, double_neurons,
+                            n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                             bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
