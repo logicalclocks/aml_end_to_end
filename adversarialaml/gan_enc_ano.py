@@ -148,7 +148,7 @@ class GanAnomalyDetector(tf.keras.Model):
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
-    @tf.function
+    #@tf.function
     def train_step(self, real_data):
         if isinstance(real_data, tuple):
             real_data = real_data[0]
@@ -241,7 +241,7 @@ class GanAnomalyDetector(tf.keras.Model):
 
         return {"d_loss": d_loss, "g_loss": g_loss, "e_loss": e_loss, "anomaly_score": anomaly_score["anomaly_score"]}
 
-    @tf.function
+    #@tf.function
     def test_step(self, input):
         if isinstance(input, tuple):
             input = input[0]
