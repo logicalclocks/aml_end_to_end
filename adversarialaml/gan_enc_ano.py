@@ -22,6 +22,11 @@ import tensorflow as tf
 class GanAnomalyDetector(tf.keras.Model):
     # implementation is based on https://github.com/keras-team/keras-io/blob/master/examples/generative/wgan_gp.py
     #   https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch/
+
+    # TODO:
+    #   https://github.com/eriklindernoren/Keras-GAN/blob/3ff3be4b4b2fa338b18e469888b6f0b7a1b2db48/wgan_gp/wgan_gp.py#L26
+    #   https://machinelearningmastery.com/how-to-implement-progressive-growing-gan-models-in-keras/
+
     def __init__(
             self,
             input_dim,
@@ -129,12 +134,17 @@ class GanAnomalyDetector(tf.keras.Model):
         and added to the discriminator loss.
         """
         # Get the interpolated sample
+        """
         diff = fake_data - real_data
-        batch_size = (tf.compat.dimension_value(diff.shape.dims[0]) or
-                      tf.shape(input=diff)[0])
+        batch_size = (tf.compat.dimension_value(diff.shape.dims[0]) or tf.shape(input=diff)[0])
         alpha_shape = [batch_size] + [1] * (diff.shape.ndims - 1)
-        alpha = tf.random.normal(shape=alpha_shape, mean=0.0, stddev=1.0, )
+        alpha = tf.random.normal(shape=alpha_shape, mean=0.0, stddev=2.0, )
         interpolated = real_data + (alpha * diff)
+        """
+        batch_size = tf.shape(real_data)[0]
+        alpha = tf.random.normal(shape=[batch_size, 1], mean=0.0, stddev=2.0, dtype=tf.dtypes.float32)
+        #alpha = tf.random_uniform([self.batch_size, 1], minval=-2, maxval=2, dtype=tf.dtypes.float32)
+        interpolated = (alpha * real_data) + ((1 - alpha) * fake_data)
 
         with tf.GradientTape() as gp_tape:
             gp_tape.watch(interpolated)
@@ -271,12 +281,38 @@ class GanAnomalyDetector(tf.keras.Model):
         return {'anomaly_score': anomaly_score}
 
 
+class RandomWeightedAverage(tf.keras.layers.Layer):
+    """Provides a (random) weighted average between real and generated image samples
+
+        x1 = tf.keras.layers.Input((128, 1))
+        x2 = tf.keras.layers.Input((128, 1))
+
+        y = RandomWeightedAverage(4)(inputs=[x1, x2])
+        model = tf.keras.Model(inputs=[x1, x2], outputs=[y])
+        print(model.summary())
+    """
+    def __init__(self, batch_size):
+        super().__init__()
+        self.batch_size = batch_size
+
+    def call(self, inputs, **kwargs):
+        alpha = tf.random_uniform((self.batch_size, 1), minval=-2, maxval=2, dtype=tf.dtypes.float32)
+        return (alpha * inputs[0]) + ((1 - alpha) * inputs[1])
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[0]
+
 # Create a Keras callback that periodically saves generated data
 class GanAnomalyMonitor(tf.keras.callbacks.Callback):
-    def __init__(self, batch_size, latent_dim, input_dim):
+    def __init__(self, batch_size, latent_dim, input_dim, logdir=None):
         self.batch_size = batch_size
         self.latent_dim = latent_dim
         self.input_dim = input_dim
+
+        if logdir:
+            self.summary_writer = tf.summary.create_file_writer(logdir)
+        else:
+            self.summary_writer = None
 
     def on_epoch_end(self, epoch, logs=None):
         random_latent_vectors = tf.random.normal(shape=(self.batch_size, self.latent_dim))
@@ -288,12 +324,17 @@ class GanAnomalyMonitor(tf.keras.callbacks.Callback):
         # Encode the latent vector
         encoded_random_latent_vectors = self.model.encoder(tf.random.normal(shape=(self.batch_size, self.input_dim)),
                                                      training=False)
+        if self.summary_writer:
+            with self.summary_writer.as_default():
+                tf.summary.histogram(name="random_latent_vectors", data=random_latent_vectors, step=epoch, description=None)
+                tf.summary.histogram(name="generated_data", data=generated_data, step=epoch, description=None)
+                tf.summary.histogram(name="encoded_fake_data", data=encoded_fake_data, step=epoch, description=None)
+                tf.summary.histogram(name="encoded_random_latent_vectors", data=encoded_random_latent_vectors, step=epoch, description=None)
+                tf.summary.histogram(name="generator_reconstructed_encoded_fake_data", data=generator_reconstructed_encoded_fake_data, step=epoch, description=None)
 
-        tf.summary.histogram(name="random_latent_vectors", data=random_latent_vectors, step=epoch, description=None)
-        tf.summary.histogram(name="generated_data", data=generated_data, step=epoch, description=None)
-        tf.summary.histogram(name="encoded_fake_data", data=encoded_fake_data, step=epoch, description=None)
-        tf.summary.histogram(name="encoded_random_latent_vectors", data=encoded_random_latent_vectors, step=epoch, description=None)
-        tf.summary.histogram(name="generator_reconstructed_encoded_fake_data", data=generator_reconstructed_encoded_fake_data, step=epoch, description=None)
+    def on_train_end(self, logs=None):
+        if self.summary_writer:
+            self.summary_writer.flush()
 
 # Define the loss functions for the discriminator,
 # which should be (fake_loss - real_loss).
@@ -411,7 +452,7 @@ def _construct_model(model_name, input_name, input_dim, output_name, output_dim,
     return tf.keras.Model(inputs=inputs, outputs=outputs, name=model_name)
 
 
-def _bluh(
+def _tmp(
         generator_reconstructed_encoded_fake_data,
         encoded_random_latent_vectors,
         real_data,
