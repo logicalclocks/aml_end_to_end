@@ -12,8 +12,8 @@ echo "Copying files from AML repo to Hopsworks."
 echo "This will take a little bit..."
 
 hdfs dfs -copyFromLocal -f demodata/*.csv /Projects/${PROJECT}/Resources
-tar zcf adversarialaml.tgz adversarialaml
-hdfs dfs -copyFromLocal -f adversarialaml.tgz /Projects/${PROJECT}/Resources
+zip -r adversarialaml.zip adversarialaml
+hdfs dfs -copyFromLocal -f adversarialaml.zip /Projects/${PROJECT}/Resources
 hdfs dfs -copyFromLocal -f savedmodels/NodeEmbeddings /Projects/${PROJECT}/Resources
 hdfs dfs -copyFromLocal -f savedmodels/ganAml /Projects/${PROJECT}/Resources
 hdfs dfs -copyFromLocal -f *.ipynb /Projects/${PROJECT}/Jupyter
