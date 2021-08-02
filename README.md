@@ -35,13 +35,8 @@ Run jupyter notebooks in the following order:
 2) 2_prep_training_dataset_for_embeddings.ipynb
 3) 3_maggy_node_embeddings.ipynb
 4) 4_compute_node_embeddings.ipynb 
-5) 5_predict_node_embeddings_and_ingest_to_fs.ipynb
-6) 6_maggy_adversarial_aml.ipynb
-7) 7_train_adversarial_aml.ipynb
-8) 8_aml_model_server.ipynb
-
-### Airflow
-In Hopsworks you can also create airflow pipeline. For this:  
-1) Create notebook jobs. You can follow instructions [here](https://hopsworks.readthedocs.io/en/stable/user_guide/hopsworks/jobs.html?highlight=project.connect#python) 
-how to create jobs in Hopsworks.
-2) Create Airflow DAG using provided airflow_aml_end2end.py. 
+5) 5_predict_and_create_node_embeddings_fg.ipynb
+6) 6_create_node_embeddings_td.ipynb
+7) 7_maggy_adversarial_aml.ipynb
+8) 8_train_adversarial_aml.ipynb
+9) 9_aml_model_server.ipynb
