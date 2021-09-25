@@ -36,7 +36,7 @@ Run jupyter notebooks in the following order:
 3) 3_maggy_node_embeddings.ipynb
 4) 4_compute_node_embeddings.ipynb 
 5) 5_predict_and_create_node_embeddings_fg.ipynb
-6) 6_create_node_embeddings_td.ipynb
+6) 6_create_anomaly_detection_td.ipynb
 7) 7_maggy_adversarial_aml.ipynb
 8) 8_train_adversarial_aml.ipynb
 9) 9_aml_model_server.ipynb
