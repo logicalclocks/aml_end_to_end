@@ -2,3 +2,6 @@
 .ipynb_checkpoints
 .idea
 gan4aml/.ipynb_checkpoints
+aml_end_to_end.egg-info/
+build/
+dist/
