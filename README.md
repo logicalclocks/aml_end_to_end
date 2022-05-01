@@ -15,16 +15,11 @@ hyperparameter tuning.
 * Model serving - We will use Hopsworks model server to predict anomalous transactions. 
 
 ## Demo dataset
-A sample of transaction data is provided in the folder ./demodata, including upload alert_transactions.csv, party.csv and transactions.csv. You should upload these files to hdfs:///Projects/{}/Resources in your Hopsworks cluster. You can do this by running this script (which will also upload adversarialaml.tgz - needed to run some examples to the same directory):
-
-    ./copy-hopsworks.sh project-name
-
-
-    Install in Python/PyPi: stellargraph 1.2.1
+A sample of transaction data is provided in the folder ./demodata, including upload alert_transactions.csv, party.csv and transactions.csv. 
 
 ## Anomaly detection model
 Keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) is provided in the folder
-./adversarialaml. To use this library create a zip file containing the python files in the adversarialaml folder and attach your zip file when starting a Jupyter server or Hopsworks job. The `copy-hopsworks.sh` script will upload adversarialaml.tgz to the Resources directory, but you will still need to attach the zip file when you start/run a notebook/job.
+./adversarialaml. To use this library insall as python library from https://github.com/logicalclocks/AMLend2end.git. 
  
 ## End to End pipeline
 To successfully complete this tutorial use one of 2 options bellow
