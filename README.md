@@ -19,10 +19,11 @@ A sample of transaction data is provided in the folder ./demodata, including upl
 
 ## Anomaly detection model
 Keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/1905.11034.pdf) is provided in the folder
-./adversarialaml. To use this library insall as python library from https://github.com/logicalclocks/AMLend2end.git. 
- 
+./adversarialaml. To use this library install as python library from https://github.com/logicalclocks/AMLend2end.git.
+![intall_python_lib_from_git.gif](./images/intall_python_lib_from_git.gif)
+
 ## End to End pipeline
-To successfully complete this tutorial use one of 2 options bellow
+To successfully complete this tutorial clone this repository to your Hopsworks project ![git_clone.gif](./images/git_clone.gif)
  
 ### Jupyter notebooks step by step   
 Run jupyter notebooks in the following order:
