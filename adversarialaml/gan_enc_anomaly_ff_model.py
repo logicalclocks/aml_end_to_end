@@ -158,7 +158,7 @@ class GanAnomalyDetector(tf.keras.Model):
         gp = tf.reduce_mean((norm - 1.0) ** 2)
         return gp
 
-    #@tf.function
+    @tf.function
     def train_step(self, real_data):
         if isinstance(real_data, tuple):
             real_data = real_data[0]
@@ -207,6 +207,15 @@ class GanAnomalyDetector(tf.keras.Model):
             self.d_optimizer.apply_gradients(
                 zip(d_gradient, self.discriminator.trainable_variables)
             )
+            """
+            options = tf.distribute.experimental.CommunicationOptions(
+                bytes_per_pack=50 * 1024 * 1024,
+                timeout_seconds=120.0,
+                implementation=tf.distribute.experimental.CommunicationImplementation.NCCL
+            )
+            grads = tf.distribute.get_replica_context().all_reduce('sum', grads, options=options)
+            optimizer.apply_gradients(zip(grads, vars), experimental_aggregate_gradients=False)
+            """
 
         # Train the generator
         # Get the latent vector
@@ -225,6 +234,15 @@ class GanAnomalyDetector(tf.keras.Model):
         self.g_optimizer.apply_gradients(
             zip(gen_gradient, self.generator.trainable_variables)
         )
+        """
+        options = tf.distribute.experimental.CommunicationOptions(
+            bytes_per_pack=50 * 1024 * 1024,
+            timeout_seconds=120.0,
+            implementation=tf.distribute.experimental.CommunicationImplementation.NCCL
+        )
+        grads = tf.distribute.get_replica_context().all_reduce('sum', grads, options=options)
+        optimizer.apply_gradients(zip(grads, vars), experimental_aggregate_gradients=False)
+        """
 
         # Train the encoder
         with tf.GradientTape() as tape:
@@ -246,12 +264,21 @@ class GanAnomalyDetector(tf.keras.Model):
         self.e_optimizer.apply_gradients(
             zip(enc_gradient, self.encoder.trainable_variables)
         )
+        """
+        options = tf.distribute.experimental.CommunicationOptions(
+            bytes_per_pack=50 * 1024 * 1024,
+            timeout_seconds=120.0,
+            implementation=tf.distribute.experimental.CommunicationImplementation.NCCL
+        )
+        grads = tf.distribute.get_replica_context().all_reduce('sum', grads, options=options)
+        optimizer.apply_gradients(zip(grads, vars), experimental_aggregate_gradients=False)
+        """
 
         anomaly_score = self.compute_anomaly_score(real_data)
 
         return {"d_loss": d_loss, "g_loss": g_loss, "e_loss": e_loss, "anomaly_score": anomaly_score["anomaly_score"]}
 
-    #@tf.function
+    @tf.function
     def test_step(self, input):
         if isinstance(input, tuple):
             input = input[0]
@@ -508,6 +535,13 @@ def get_generator_model(model_name, input_name, noise_dim, output_name, output_d
 
 
 def get_encoder_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
+                      n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
+                      bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
+    return _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
+                            n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
+                            bottleneck_neurons, batch_norm, batch_dropout, dropout_rate)
+
+def get_decoder_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
                       n_layers, middle_layer_activation_fn, final_activation_fn_name, double_neurons,
                       bottleneck_neurons, batch_norm, batch_dropout, dropout_rate):
     return _construct_model(model_name, input_name, input_dim, output_name, output_dim, n_units,
