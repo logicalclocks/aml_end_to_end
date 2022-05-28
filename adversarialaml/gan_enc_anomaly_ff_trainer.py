@@ -1,9 +1,12 @@
 import tensorflow as tf
 
 from adversarialaml import orbit
+from adversarialaml import keras_utils
+from adversarialaml import utils
 from adversarialaml.orbit import grad_utils
 
-class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
+
+class GanEncoderAnmalyFfTrainer(orbit.StandardTrainer):
     """Trains a single-output model on a given dataset.
     This trainer will handle running a model with one output on a single
     dataset. It will apply the provided loss function to the model's output
@@ -14,6 +17,10 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
 
     def __init__(self,
                  train_dataset,
+                 latent_dim,
+                 input_dim,
+                 d_steps,
+
                  global_batch_size,
 
                  discriminator_model,
@@ -32,6 +39,8 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
                  generator_bytes_per_pack,
                  encoder_bytes_per_pack,
 
+                 epoch_steps,
+                 time_callback,
                  metrics=None,
                  trainer_options=None):
         """Initializes a `SingleTaskTrainer` instance.
@@ -67,13 +76,17 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
         self.generator_optimizer = generator_optimizer
         self.encoder_optimizer = encoder_optimizer
 
+        self.discriminator_bytes_per_pack = discriminator_bytes_per_pack
+        self.generator_bytes_per_pack = generator_bytes_per_pack
+        self.encoder_bytes_per_pack = encoder_bytes_per_pack
+
         ####
-        self.latent_dim = [4, 4]
-        self.input_dim = [32, 1]
-        self.d_steps = 5
+        self.latent_dim = latent_dim
+        self.input_dim = input_dim
+        self.d_steps = d_steps
         self.gp_weight = 10
-        self.beta_cycle_gen=10
-        self.global_batch_size=global_batch_size
+        self.beta_cycle_gen = 10
+        self.global_batch_size = global_batch_size
 
         # Capture the strategy from the containing scope.
         self.strategy = tf.distribute.get_strategy()
@@ -82,11 +95,7 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
         self.epoch_d_loss_avg = tf.keras.metrics.Mean(name="epoch_d_loss_avg", dtype=tf.float32)
         self.epoch_g_loss_avg = tf.keras.metrics.Mean(name="epoch_g_loss_avg", dtype=tf.float32)
         self.epoch_e_loss_avg = tf.keras.metrics.Mean(name="epoch_e_loss_avg", dtype=tf.float32)
-        #self.epoch_a_score_avg = tf.keras.metrics.Mean(name="epoch_a_score_avg", dtype=tf.float32)
-
-        self.discriminator_bytes_per_pack = discriminator_bytes_per_pack
-        self.generator_bytes_per_pack = generator_bytes_per_pack
-        self.encoder_bytes_per_pack = encoder_bytes_per_pack
+        # self.epoch_a_score_avg = tf.keras.metrics.Mean(name="epoch_a_score_avg", dtype=tf.float32)
 
         # We need self.metrics to be an iterable later, so we handle that here.
         if metrics is None:
@@ -96,7 +105,14 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
         else:
             self.metrics = [metrics]
 
-        super(GanEncoderAnmalyTrainer, self).__init__(
+
+        # Handling epochs.
+        self.epoch_steps = epoch_steps
+        self.global_step = self.generator_optimizer.iterations
+        self.epoch_helper = utils.EpochHelper(epoch_steps, self.global_step)
+        self.time_callback = time_callback
+
+        super(GanEncoderAnmalyFfTrainer, self).__init__(
             train_dataset=train_dataset, options=trainer_options)
 
     def gradient_penalty(self, real_data, fake_data):
@@ -106,7 +122,7 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
         """
         # Get the interpolated sample
         real_data_shape = tf.shape(real_data)
-        alpha = tf.random.normal(shape=[real_data_shape[0], real_data_shape[1], real_data_shape[2]], mean=0.0, stddev=2.0,
+        alpha = tf.random.normal(shape=[real_data_shape[0], real_data_shape[1]], mean=0.0, stddev=2.0,
                                  dtype=tf.dtypes.float32)
         # alpha = tf.random_uniform([self.batch_size, 1], minval=-2, maxval=2, dtype=tf.dtypes.float32)
         interpolated = (alpha * real_data) + ((1 - alpha) * fake_data)
@@ -143,9 +159,12 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
         self.epoch_g_loss_avg.reset_states()
         self.epoch_e_loss_avg.reset_states()
         # TODO (Davit):
-        #self.epoch_a_score_avg.reset_states()
+        # self.epoch_a_score_avg.reset_states()
         for metric in self.metrics:
             metric.reset_states()
+
+        self._epoch_begin()
+        self.time_callback.on_batch_begin(self.epoch_helper.batch_index)
 
     @tf.function
     def train_step(self, iterator):
@@ -173,19 +192,22 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
             # as compared to 5 to reduce the training time.
             for i in range(self.d_steps):
                 # Get the latent vector
-                random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim[0], self.latent_dim[1])),
+                random_latent_vectors = tf.random.normal(
+                    shape=(batch_size, self.latent_dim)),
                 with tf.GradientTape() as discriminator_tape:
                     # Generate fake data from the latent vector
                     fake_data = self.generator_model(random_latent_vectors, training=True)
 
-                    #(somewhere here step forward?)
+                    # (somewhere here step forward?)
                     # Get the logits for the fake data
                     fake_logits = self.discriminator_model(fake_data, training=True)
                     # Get the logits for the real data
                     real_logits = self.discriminator_model(real_data, training=True)
 
                     # Calculate the discriminator loss using the fake and real sample logits
-                    d_cost = self.discriminator_loss(real_sample=real_logits, fake_sample=fake_logits, beta_cycle_gen=self.beta_cycle_gen, global_batch_size=self.global_batch_size)
+                    d_cost = self.discriminator_loss(real_sample=real_logits, fake_sample=fake_logits,
+                                                     beta_cycle_gen=self.beta_cycle_gen,
+                                                     global_batch_size=self.global_batch_size)
                     # Calculate the gradient penalty
                     gp = self.gradient_penalty(real_data, fake_data)
                     # Add the gradient penalty to the original discriminator loss
@@ -210,7 +232,7 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
 
             # Train the generator
             # Get the latent vector
-            random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim[0], self.latent_dim[1]))
+            random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim))
             with tf.GradientTape() as generator_tape:
                 # Generate fake data using the generator
                 generated_data = self.generator_model(random_latent_vectors, training=True)
@@ -244,9 +266,7 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
                 # Reconstruct encoded generate fake data
                 generator_reconstructed_encoded_fake_data = self.generator_model(encoded_fake_data, training=True)
                 # Encode the latent vector
-                encoded_random_latent_vectors = self.encoder_model(tf.random.normal(shape=(batch_size,
-                                                                                           self.input_dim[0],
-                                                                                           self.input_dim[1])),
+                encoded_random_latent_vectors = self.encoder_model(tf.random.normal(shape=(batch_size, self.input_dim)),
                                                                    training=True)
                 # Calculate encoder loss
                 e_loss = self.encoder_loss(generated_data, generator_reconstructed_encoded_fake_data,
@@ -273,11 +293,11 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
             self.epoch_g_loss_avg.update_state(g_loss)
             self.epoch_e_loss_avg.update_state(e_loss)
             # TODO (Davit)
-            #anomaly_score = self.compute_anomaly_score(real_data)
-            #self.epoch_a_score_avg.update_state(anomaly_score)
+            # anomaly_score = self.compute_anomaly_score(real_data)
+            # self.epoch_a_score_avg.update_state(anomaly_score)
 
         self.strategy.run(step_fn, args=(next(iterator),))
-        #return self.strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
+        # return self.strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
 
     def train_loop_end(self):
         """Actions to take once after a training loop."""
@@ -287,6 +307,47 @@ class GanEncoderAnmalyTrainer(orbit.StandardTrainer):
             metrics[self.epoch_d_loss_avg.name] = self.epoch_d_loss_avg.result()
             metrics[self.epoch_g_loss_avg.name] = self.epoch_g_loss_avg.result()
             metrics[self.epoch_e_loss_avg.name] = self.epoch_e_loss_avg.result()
-            #metrics[self.epoch_a_score_avg.name] = self.epoch_a_score_avg.result()
-
+        self.time_callback.on_batch_end(self.epoch_helper.batch_index - 1)
+        self._epoch_end()
         return metrics
+
+    def configure_optimizer(self, optimizer,
+                            use_float16=False,
+                            loss_scale=None,
+                            use_graph_rewrite=None):
+        """Configures optimizer object with performance options."""
+        if use_graph_rewrite is not None:
+            logging.warning('`use_graph_rewrite` is deprecated inside '
+                            '`configure_optimizer`. Please remove the usage.')
+        del use_graph_rewrite
+        if use_float16:
+            if loss_scale in (None, 'dynamic'):
+                optimizer = tf.keras.mixed_precision.LossScaleOptimizer(optimizer)
+            else:
+                # loss_scale is a number. We interpret that as a fixed loss scale.
+                optimizer = tf.keras.mixed_precision.LossScaleOptimizer(
+                    optimizer, dynamic=False, initial_scale=loss_scale)
+        return optimizer
+
+    def set_mixed_precision_policy(self, dtype, loss_scale=None):
+        """Sets the global `tf.keras.mixed_precision.Policy`."""
+        # TODO(b/191894773): Remove loss_scale argument
+        assert loss_scale is None, (
+            'The loss_scale argument must be None. The argument exists for '
+            'historical reasons and will be removed soon.')
+        if dtype == tf.float16:
+            tf.keras.mixed_precision.set_global_policy('mixed_float16')
+        elif dtype == tf.bfloat16:
+            tf.keras.mixed_precision.set_global_policy('mixed_bfloat16')
+        elif dtype == tf.float32:
+            tf.keras.mixed_precision.set_global_policy('float32')
+        else:
+            raise ValueError('Unexpected dtype: %s' % dtype)
+
+    def _epoch_begin(self):
+        if self.epoch_helper.epoch_begin():
+            self.time_callback.on_epoch_begin(self.epoch_helper.current_epoch)
+
+    def _epoch_end(self):
+        if self.epoch_helper.epoch_end():
+            self.time_callback.on_epoch_end(self.epoch_helper.current_epoch)

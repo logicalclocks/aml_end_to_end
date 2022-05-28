@@ -1,2 +1,1 @@
 stellargraph==1.2.1
-tf-models-official==2.4.0
