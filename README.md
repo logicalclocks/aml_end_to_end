@@ -18,9 +18,9 @@ Keras implementation of [adversarial anomaly detection](https://arxiv.org/pdf/19
 ## End to End pipeline
 To successfully complete this tutorial clone this repository to your local env
 ```
-git clone https://github.com/logicalclocks/hopsworks-tutorials.git
-cd hopsworks-tutorials
-echo -n [REPLACE YOUR API KEY] > .hw_api_key
+git clone https://github.com/logicalclocks/aml_end_to_end.git
+cd aml_end_to_end
+echo -n [PUT YOUR API KEY] > .hw_api_key
 chmod u+x run_jupyter.sh && ./run_jupyter.sh
 ```
 
